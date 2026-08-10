@@ -1,6 +1,6 @@
 # Sixtar Gate: STARTRAIL — Version & Network Bypass Documentation
 
-본 디렉토리는 **Sixtar Gate: STARTRAIL — Version & Network Bypass** 모드의 상세 기술 문서 및 개발 가이드를 포함합니다.
+본 디렉토리는 **Sixtar Gate: STARTRAIL — Version & Network Bypass** 모드의 상세 기술 문서 및 개발 가이드를 포함합니다. 본 모드는 **2 February 2022 ~ 4 August 2022** 기간 동안 배포된 게임 버전을 전용 호환 대상으로 작성되었습니다.
 
 ## 📚 문서목록 (Table of Contents)
 
