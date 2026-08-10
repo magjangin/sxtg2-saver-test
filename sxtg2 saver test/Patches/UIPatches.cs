@@ -133,6 +133,11 @@ namespace sxtg2_saver_test.Patches
                     }
                     us.lastSelectedCategoryID = "ALL TRACKS";
 
+                    // 원본은 InitializeMusicSelect 에서 인스턴스 필드 us 를 채운다. 여기서 안 채우면
+                    // Unity 가 만들어 둔 빈 SXGT_UserSettingCache 에 마지막 선택 곡/레벨/카테고리가 기록되고
+                    // 아무도 저장하지 않아서 다음 진입 때 전부 초기화된다.
+                    ReflectionUtils.SetFieldValue(__instance, typeof(ManagerMusicSelect), us, "us");
+
                     // Resilient field retrieval
                     Animator anim = ReflectionUtils.GetFieldValue<Animator>(__instance, typeof(ManagerMusicSelect), "animator");
                     if (anim == null) anim = __instance.GetComponent<Animator>();
@@ -140,6 +145,20 @@ namespace sxtg2_saver_test.Patches
 
                     SFXModule sfx = ReflectionUtils.GetFieldValue<SFXModule>(__instance, typeof(ManagerMusicSelect), "sfxModule");
                     sfx?.InitializeAllMemberInDic();
+
+                    // 원본 InitializeMusicSelect 의 볼륨 초기화. 이게 빠지면 targetPreviewVolume /
+                    // targetBGMVolume 이 0f 로 남고, PlayTrackPreviewRoutine 이 previewSource.volume 에
+                    // 그 0 을 그대로 넣어서 프리뷰도 셀렉 BGM 도 무음이 된다.
+                    try
+                    {
+                        __instance.SetBGMSourceVolume(-1f);
+                    }
+                    catch (Exception volEx)
+                    {
+                        MelonLogger.Warning($"[Bypass] SetBGMSourceVolume 실패 -> 볼륨 필드 직접 주입 ({volEx.GetType().Name})");
+                        ReflectionUtils.SetFieldValue(__instance, typeof(ManagerMusicSelect), Util.GetBGMVolume(), "targetBGMVolume");
+                        ReflectionUtils.SetFieldValue(__instance, typeof(ManagerMusicSelect), Util.GetGameplayVolume(), "targetPreviewVolume");
+                    }
 
                     GameObject opLayer = ReflectionUtils.GetFieldValue<GameObject>(__instance, typeof(ManagerMusicSelect), "operatorLayer");
                     if (opLayer != null) opLayer.SetActive(false);
