@@ -1,6 +1,6 @@
 # 시스템 아키텍처 및 설계 구조 (System Architecture)
 
-본 문서는 **Sixtar Gate: STARTRAIL — Version & Network Bypass** 모드의 아키텍처와 게임 업데이트 내성(Update Resilience) 설계를 상세히 다룹니다. (본 모드의 호환 목표 대상은 **2 February 2022 ~ 4 August 2022** 기간 동안 제공된 게임 버전입니다.)
+본 문서는 **Sixtar Gate: STARTRAIL — Version & Network Bypass** 모드의 아키텍처와 게임 업데이트 내성(Update Resilience) 설계를 상세히 다룹니다. (본 모드의 호환 목표 대상은 **2022년 2월 2일 ~ 2022년 8월 4일** 기간 동안 제공된 게임 버전입니다.)
 
 ---
 
