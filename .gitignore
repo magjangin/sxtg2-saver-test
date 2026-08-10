@@ -1,0 +1,13 @@
+# 빌드 산출물
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# 게임 원본 디컴파일 결과 (Lyrebird Studio 저작물).
+# 모딩 시 타입 참조용으로 로컬에만 두고, 저장소에는 올리지 않는다.
+Assembly-CSharp/
