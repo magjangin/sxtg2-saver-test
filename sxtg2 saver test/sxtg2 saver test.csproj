@@ -68,7 +68,6 @@
   <ItemGroup>
     <Compile Include="SixtarBypassMod.cs" />
     <Compile Include="Helpers\ReflectionUtils.cs" />
-    <Compile Include="Helpers\PatchRegistry.cs" />
     <Compile Include="Patches\NetworkPatches.cs" />
     <Compile Include="Patches\DataPatches.cs" />
     <Compile Include="Patches\UIPatches.cs" />
