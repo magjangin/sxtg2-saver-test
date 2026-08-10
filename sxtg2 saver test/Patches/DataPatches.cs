@@ -20,7 +20,9 @@ namespace sxtg2_saver_test.Patches
             public static bool Prepare()
             {
                 _target = ReflectionUtils.FindMethod(
-                    new[] { typeof(ItemHelper), typeof(UserAccountModule), Type.GetType("ManagerUnlock") },
+                    // Type.GetType 은 어셈블리 한정 이름이 없으면 다른 어셈블리 타입을 못 찾아서
+                    // Assembly-CSharp 타입에 대해 항상 null 이었다. FindType 은 로드된 어셈블리를 뒤진다.
+                    new[] { typeof(ItemHelper), typeof(UserAccountModule), ReflectionUtils.FindType("ManagerUnlock") },
                     new[] { "LoadUnlockCache" }
                 );
                 return _target != null;
@@ -47,7 +49,9 @@ namespace sxtg2_saver_test.Patches
             public static bool Prepare()
             {
                 _target = ReflectionUtils.FindMethod(
-                    new[] { typeof(ItemHelper), typeof(UserAccountModule), Type.GetType("ManagerUnlock") },
+                    // Type.GetType 은 어셈블리 한정 이름이 없으면 다른 어셈블리 타입을 못 찾아서
+                    // Assembly-CSharp 타입에 대해 항상 null 이었다. FindType 은 로드된 어셈블리를 뒤진다.
+                    new[] { typeof(ItemHelper), typeof(UserAccountModule), ReflectionUtils.FindType("ManagerUnlock") },
                     new[] { "CheckItemsUnlock", "SaveUnlockCache", "CheckUnlockCondition" }
                 );
                 return _target != null;
@@ -61,15 +65,23 @@ namespace sxtg2_saver_test.Patches
             }
         }
 
-        // 3. UserAccountModule: LoadFavorites CryptographicException 방지 안전 패치
+        // 3. UserAccountModule: LoadFavorites 안전망
+        //    원본을 먼저 돌리고, 터지거나(CryptographicException 등) null 을 주면 빈 객체로 대체한다.
+        //    원본이 멀쩡하면 사용자의 즐겨찾기가 그대로 살아있다.
         [HarmonyPatch(typeof(UserAccountModule), nameof(UserAccountModule.LoadFavorites))]
         public static class LoadFavoritesPatch
         {
-            public static bool Prefix(ref SXGT_Favorites __result)
+            public static Exception Finalizer(Exception __exception, ref SXGT_Favorites __result)
             {
-                MelonLogger.Msg("[Bypass] LoadFavorites intercepted! Returning safe SXGT_Favorites object.");
+                if (__exception == null && __result != null)
+                {
+                    return null;
+                }
+
+                MelonLogger.Msg($"[Bypass] LoadFavorites 실패 -> 빈 즐겨찾기로 대체 " +
+                                $"({(__exception == null ? "null 반환" : __exception.GetType().Name)})");
                 __result = new SXGT_Favorites();
-                return false;
+                return null; // 예외를 삼켜서 호출자로 전파하지 않는다
             }
         }
 
@@ -196,7 +208,23 @@ namespace sxtg2_saver_test.Patches
 
             public static MethodBase TargetMethod() => _target;
 
-            public static bool Prefix(ref Dictionary<string, List<InventoryItemInfo>> __result)
+            // 원본 구현과 로직이 동일한 순수 방어용 패치이므로, 통째로 대체하지 않고
+            // 원본을 먼저 실행한다. 원본이 성공하면 Util.inventoryItems 정적 캐시도 원본이 채운다.
+            // 원본이 터지거나 빈 결과를 줄 때만 아래 폴백으로 대체한다.
+            public static Exception Finalizer(Exception __exception, ref Dictionary<string, List<InventoryItemInfo>> __result)
+            {
+                if (__exception == null && __result != null && __result.Count > 0)
+                {
+                    return null;
+                }
+
+                MelonLogger.Warning($"[Bypass] DeserializeInventoryItemFromCSV 원본 실패 -> 폴백 사용 " +
+                                    $"({(__exception == null ? "빈 결과" : __exception.GetType().Name)})");
+                __result = BuildFallback();
+                return null; // 예외를 삼켜서 호출자로 전파하지 않는다
+            }
+
+            private static Dictionary<string, List<InventoryItemInfo>> BuildFallback()
             {
                 var dict = new Dictionary<string, List<InventoryItemInfo>>();
                 try
@@ -223,9 +251,8 @@ namespace sxtg2_saver_test.Patches
                 }
                 catch (Exception ex)
                 {
-                    MelonLogger.Error($"[Bypass] Error in DeserializeInventoryItemFromCSV: {ex}");
+                    MelonLogger.Error($"[Bypass] Error in DeserializeInventoryItemFromCSV fallback: {ex}");
                 }
-                __result = dict;
 
                 // 원본은 결과를 private static 캐시(Util.inventoryItems)에도 넣는다.
                 // Util.FindInventoryItemInfoByID / GetInventoryItemIndexByID 는 반환값을 버리고
@@ -241,7 +268,7 @@ namespace sxtg2_saver_test.Patches
                     MelonLogger.Warning("[Bypass] Util.inventoryItems 필드를 찾지 못함. 인벤토리 조회가 NRE를 낼 수 있음.");
                 }
 
-                return false;
+                return dict;
             }
         }
     }
