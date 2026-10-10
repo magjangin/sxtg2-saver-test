@@ -22,7 +22,7 @@ namespace sxtg2_saver_test.Patches
                 _target = ReflectionUtils.FindMethod(
                     // Type.GetType 은 어셈블리 한정 이름이 없으면 다른 어셈블리 타입을 못 찾아서
                     // Assembly-CSharp 타입에 대해 항상 null 이었다. FindType 은 로드된 어셈블리를 뒤진다.
-                    new[] { typeof(ItemHelper), typeof(UserAccountModule), ReflectionUtils.FindType("ManagerUnlock") },
+                    new[] { ReflectionUtils.FindType("ItemHelper"), typeof(UserAccountModule), ReflectionUtils.FindType("ManagerUnlock") },
                     new[] { "LoadUnlockCache" }
                 );
                 return _target != null;
@@ -51,7 +51,7 @@ namespace sxtg2_saver_test.Patches
                 _target = ReflectionUtils.FindMethod(
                     // Type.GetType 은 어셈블리 한정 이름이 없으면 다른 어셈블리 타입을 못 찾아서
                     // Assembly-CSharp 타입에 대해 항상 null 이었다. FindType 은 로드된 어셈블리를 뒤진다.
-                    new[] { typeof(ItemHelper), typeof(UserAccountModule), ReflectionUtils.FindType("ManagerUnlock") },
+                    new[] { ReflectionUtils.FindType("ItemHelper"), typeof(UserAccountModule), ReflectionUtils.FindType("ManagerUnlock") },
                     new[] { "CheckItemsUnlock", "SaveUnlockCache", "CheckUnlockCondition" }
                 );
                 return _target != null;
@@ -94,7 +94,7 @@ namespace sxtg2_saver_test.Patches
             public static bool Prepare()
             {
                 _target = ReflectionUtils.FindMethod(
-                    new[] { typeof(RhythmGameUtils), typeof(Util) },
+                    new[] { ReflectionUtils.FindType("RhythmGameUtils"), typeof(Util) },
                     new[] { "GetTrackDataListFromCSV" }
                 );
                 return _target != null;
@@ -105,9 +105,9 @@ namespace sxtg2_saver_test.Patches
             public static bool Prefix(ref List<TrackData> __result)
             {
                 MelonLogger.Msg("[Bypass] Resilient GetTrackDataListFromCSV starting.");
-                if (RhythmGameUtils.trackDatas != null)
+                if (Util.tracks != null)
                 {
-                    __result = RhythmGameUtils.trackDatas;
+                    __result = Util.tracks;
                     return false;
                 }
 
@@ -120,7 +120,7 @@ namespace sxtg2_saver_test.Patches
                     {
                         MelonLogger.Error($"[Bypass] CSVParser returned null dict for path: {path}");
                         __result = list;
-                        RhythmGameUtils.trackDatas = list;
+                        Util.tracks = list;
                         return false;
                     }
 
@@ -164,7 +164,7 @@ namespace sxtg2_saver_test.Patches
                         trackData.BGAOffset = result;
                         if (value.ContainsKey("UnlockID"))
                         {
-                            trackData.unlockID = value["UnlockID"]?.Trim();
+                            ReflectionUtils.SetFieldValue(trackData, typeof(TrackData), value["UnlockID"]?.Trim(), "unlockID");
                         }
                         if (value.ContainsKey("DisplayName_EN") && !string.IsNullOrEmpty(value["DisplayName_EN"]))
                         {
@@ -186,12 +186,12 @@ namespace sxtg2_saver_test.Patches
                     MelonLogger.Error($"[Bypass] Exception in GetTrackDataListFromCSV: {ex}");
                 }
                 __result = list;
-                RhythmGameUtils.trackDatas = list;
+                Util.tracks = list;
                 return false;
             }
         }
 
-        // 5. Dynamic Resilient Patch for Inventory Item Deserialization
+        // 5. Dynamic Resilient Patch for Inventory Item Deserialization (Newer versions: InventoryItemInfo)
         [HarmonyPatch]
         public static class DeserializeInventoryItemFromCSVPatch
         {
@@ -200,17 +200,18 @@ namespace sxtg2_saver_test.Patches
             public static bool Prepare()
             {
                 _target = ReflectionUtils.FindMethod(
-                    new[] { typeof(Util), typeof(ItemHelper) },
+                    new[] { typeof(Util), ReflectionUtils.FindType("ItemHelper") },
                     new[] { "DeserializeInventoryItemFromCSV", "DeserializeItemInfoFromCSV" }
                 );
-                return _target != null;
+                if (_target is MethodInfo mi && mi.ReturnType == typeof(Dictionary<string, List<InventoryItemInfo>>))
+                {
+                    return true;
+                }
+                return false;
             }
 
             public static MethodBase TargetMethod() => _target;
 
-            // 원본 구현과 로직이 동일한 순수 방어용 패치이므로, 통째로 대체하지 않고
-            // 원본을 먼저 실행한다. 원본이 성공하면 Util.inventoryItems 정적 캐시도 원본이 채운다.
-            // 원본이 터지거나 빈 결과를 줄 때만 아래 폴백으로 대체한다.
             public static Exception Finalizer(Exception __exception, ref Dictionary<string, List<InventoryItemInfo>> __result)
             {
                 if (__exception == null && __result != null && __result.Count > 0)
@@ -221,7 +222,7 @@ namespace sxtg2_saver_test.Patches
                 MelonLogger.Warning($"[Bypass] DeserializeInventoryItemFromCSV 원본 실패 -> 폴백 사용 " +
                                     $"({(__exception == null ? "빈 결과" : __exception.GetType().Name)})");
                 __result = BuildFallback();
-                return null; // 예외를 삼켜서 호출자로 전파하지 않는다
+                return null;
             }
 
             private static Dictionary<string, List<InventoryItemInfo>> BuildFallback()
@@ -254,20 +255,87 @@ namespace sxtg2_saver_test.Patches
                     MelonLogger.Error($"[Bypass] Error in DeserializeInventoryItemFromCSV fallback: {ex}");
                 }
 
-                // 원본은 결과를 private static 캐시(Util.inventoryItems)에도 넣는다.
-                // Util.FindInventoryItemInfoByID / GetInventoryItemIndexByID 는 반환값을 버리고
-                // 이 캐시가 채워졌다고 가정하므로, 여기서 같이 채워주지 않으면 NRE가 난다.
-                // (인벤토리 팝업 ESC가 안 먹던 원인)
                 var cache = AccessTools.Field(typeof(Util), "inventoryItems");
                 if (cache != null)
                 {
                     cache.SetValue(null, dict);
                 }
-                else
+                return dict;
+            }
+        }
+
+        // 6. Dynamic Resilient Patch for Item Info Deserialization (Older versions: UnlockableItemInfo)
+        [HarmonyPatch]
+        public static class DeserializeUnlockableItemInfoFromCSVPatch
+        {
+            private static MethodBase _target;
+
+            public static bool Prepare()
+            {
+                _target = ReflectionUtils.FindMethod(
+                    new[] { typeof(Util), ReflectionUtils.FindType("ItemHelper") },
+                    new[] { "DeserializeItemInfoFromCSV", "DeserializeInventoryItemFromCSV" }
+                );
+                if (_target is MethodInfo mi && mi.ReturnType == typeof(Dictionary<string, List<UnlockableItemInfo>>))
                 {
-                    MelonLogger.Warning("[Bypass] Util.inventoryItems 필드를 찾지 못함. 인벤토리 조회가 NRE를 낼 수 있음.");
+                    return true;
+                }
+                return false;
+            }
+
+            public static MethodBase TargetMethod() => _target;
+
+            public static Exception Finalizer(Exception __exception, ref Dictionary<string, List<UnlockableItemInfo>> __result)
+            {
+                if (__exception == null && __result != null && __result.Count > 0)
+                {
+                    return null;
                 }
 
+                MelonLogger.Warning($"[Bypass] DeserializeItemInfoFromCSV 원본 실패 -> 폴백 사용 " +
+                                    $"({(__exception == null ? "빈 결과" : __exception.GetType().Name)})");
+                __result = BuildFallback();
+                return null;
+            }
+
+            private static Dictionary<string, List<UnlockableItemInfo>> BuildFallback()
+            {
+                var dict = new Dictionary<string, List<UnlockableItemInfo>>();
+                try
+                {
+                    string path = Constants.GetSerializedDataDir("InventoryItem");
+                    CSV_Dictionary csvDict = CSVParser.ReadByDictionaryInFile(path);
+                    if (csvDict != null && csvDict.ItemDic != null)
+                    {
+                        foreach (var value in csvDict.ItemDic.Values)
+                        {
+                            string text = value["Type"];
+                            UnlockableItemInfo item = new UnlockableItemInfo
+                            {
+                                itemID = value["ID"],
+                                itemType = text,
+                                unlockString = value.ContainsKey("UnlockString") ? value["UnlockString"] : "",
+                                comparison = value.ContainsKey("Comparison") ? value["Comparison"] : "",
+                                visibility = (!value.ContainsKey("Visibility") || value["Visibility"] != "FALSE")
+                            };
+                            if (!dict.ContainsKey(text))
+                            {
+                                dict.Add(text, new List<UnlockableItemInfo>());
+                            }
+                            dict[text].Add(item);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Error($"[Bypass] Error in DeserializeUnlockableItemInfoFromCSV fallback: {ex}");
+                }
+
+                var cache = AccessTools.Field(typeof(Util), "items") ?? AccessTools.Field(typeof(Util), "inventoryItems");
+                if (cache != null)
+                {
+                    cache.SetValue(null, dict);
+                }
                 return dict;
             }
         }

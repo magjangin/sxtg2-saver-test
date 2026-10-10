@@ -1,11 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
 using RhythmGame;
-using RhythmGame.LicenseTest;
 using RhythmGame.SixtarServer;
 using sxtg2_saver_test.Helpers;
 
@@ -35,11 +35,17 @@ namespace sxtg2_saver_test.Patches
                 MelonLogger.Msg("[Bypass] Suppressed CommonErrorAction! Hiding loading overlay.");
                 if (ManagerPopup.Instance != null)
                 {
-                    ManagerPopup.Instance.HidePopupOverlay();
+                    ReflectionUtils.InvokeMethod(ManagerPopup.Instance, typeof(ManagerPopup), "HidePopupOverlay");
+                    ReflectionUtils.InvokeMethod(ManagerPopup.Instance, typeof(ManagerPopup), "OnCloseAllPopups");
                 }
-                if (InputListener.Instance != null)
+                Type inputType = ReflectionUtils.FindType("RG_InputManager", "InputListener");
+                if (inputType != null)
                 {
-                    InputListener.Instance.InputEnabled = true;
+                    object inputInst = ReflectionUtils.GetFieldValue<object>(null, inputType, "Instance", "instance");
+                    if (inputInst != null)
+                    {
+                        ReflectionUtils.SetFieldValue(inputInst, inputType, true, "inputEnabled", "InputEnabled");
+                    }
                 }
                 __result = EmptyRoutine();
                 return false;
@@ -98,7 +104,15 @@ namespace sxtg2_saver_test.Patches
                 MelonLogger.Msg("[Bypass] GetUnlockData intercepted!");
                 try
                 {
-                    ItemHelper.Instance?.InitializeUnlockData(new List<string>());
+                    Type unlockType = ReflectionUtils.FindType("ManagerUnlock", "ItemHelper");
+                    if (unlockType != null)
+                    {
+                        object inst = ReflectionUtils.GetFieldValue<object>(null, unlockType, "Instance", "instance");
+                        if (inst != null)
+                        {
+                            ReflectionUtils.InvokeMethod(inst, unlockType, "InitializeUnlockData", new object[] { new List<string>() });
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -174,7 +188,18 @@ namespace sxtg2_saver_test.Patches
 
             public static bool Prefix(Action<int> onComplete)
             {
-                int arkk = UserAccountModule.Instance != null ? UserAccountModule.Instance.CurrentUserArkk : 0;
+                int arkk = 0;
+                if (UserAccountModule.Instance != null)
+                {
+                    if (UserAccountModule.Instance.userData != null)
+                    {
+                        arkk = UserAccountModule.Instance.userData.arkk;
+                    }
+                    else
+                    {
+                        arkk = ReflectionUtils.GetFieldValue<int>(UserAccountModule.Instance, typeof(UserAccountModule), "CurrentUserArkk");
+                    }
+                }
                 onComplete?.Invoke(arkk);
                 return false;
             }
@@ -317,10 +342,19 @@ namespace sxtg2_saver_test.Patches
 
             public static MethodBase TargetMethod() => _target;
 
-            public static bool Prefix(Action<AttendanceReward> onComplete)
+            public static bool Prefix(Delegate onComplete)
             {
                 MelonLogger.Msg("[Bypass] GetAttendanceReward intercepted!");
-                onComplete?.Invoke(new AttendanceReward { gotReward = false });
+                if (onComplete != null)
+                {
+                    Type paramType = onComplete.GetType().GetGenericArguments().FirstOrDefault();
+                    object inst = paramType != null ? Activator.CreateInstance(paramType) : null;
+                    if (inst != null)
+                    {
+                        ReflectionUtils.SetFieldValue(inst, paramType, false, "gotReward");
+                    }
+                    onComplete.DynamicInvoke(inst);
+                }
                 return false;
             }
         }
@@ -342,10 +376,15 @@ namespace sxtg2_saver_test.Patches
 
             public static MethodBase TargetMethod() => _target;
 
-            public static bool Prefix(Action<List<NewsInfo>> onComplete, Action onFailed)
+            public static bool Prefix(Delegate onComplete, Action onFailed)
             {
                 MelonLogger.Msg("[Bypass] GetNewsList intercepted!");
-                onComplete?.Invoke(new List<NewsInfo>());
+                if (onComplete != null)
+                {
+                    Type listType = onComplete.GetType().GetGenericArguments().FirstOrDefault();
+                    object listInst = listType != null ? Activator.CreateInstance(listType) : null;
+                    onComplete.DynamicInvoke(listInst);
+                }
                 return false;
             }
         }
@@ -367,10 +406,15 @@ namespace sxtg2_saver_test.Patches
 
             public static MethodBase TargetMethod() => _target;
 
-            public static bool Prefix(Action<LicenseLevel> onComplete)
+            public static bool Prefix(Delegate onComplete)
             {
                 MelonLogger.Msg("[Bypass] GetUserLicenseLevel intercepted!");
-                onComplete?.Invoke(new LicenseLevel());
+                if (onComplete != null)
+                {
+                    Type paramType = onComplete.GetType().GetGenericArguments().FirstOrDefault();
+                    object inst = paramType != null ? Activator.CreateInstance(paramType) : null;
+                    onComplete.DynamicInvoke(inst);
+                }
                 return false;
             }
         }
@@ -392,10 +436,15 @@ namespace sxtg2_saver_test.Patches
 
             public static MethodBase TargetMethod() => _target;
 
-            public static bool Prefix(Action<List<NoticeInfo>> onComplete)
+            public static bool Prefix(Delegate onComplete)
             {
                 MelonLogger.Msg("[Bypass] GetUnityQuestProcess intercepted!");
-                onComplete?.Invoke(new List<NoticeInfo>());
+                if (onComplete != null)
+                {
+                    Type listType = onComplete.GetType().GetGenericArguments().FirstOrDefault();
+                    object listInst = listType != null ? Activator.CreateInstance(listType) : null;
+                    onComplete.DynamicInvoke(listInst);
+                }
                 return false;
             }
         }
@@ -410,7 +459,8 @@ namespace sxtg2_saver_test.Patches
             {
                 _target = ReflectionUtils.FindMethod(
                     new[] { typeof(ManagerWebRequest) },
-                    new[] { "GetUnityQuestServer" }
+                    new[] { "GetUnityQuestServer" },
+                    new[] { typeof(Action<URLPort>) }
                 );
                 return _target != null;
             }
