@@ -12,6 +12,17 @@
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <!--
+    게임 설치 폴더. 다른 경로를 쓰려면 빌드할 때 덮어쓴다:
+      dotnet build -c Release /p:GameDir="D:\Games\Sixtar Gate STARTRAIL"
+    (build.bat 은 첫 번째 인자 또는 GAME_DIR 환경변수로 같은 값을 넘긴다)
+  -->
+  <PropertyGroup>
+    <GameDir Condition=" '$(GameDir)' == '' ">H:\Sixtar Gate STARTRAIL server</GameDir>
+    <ManagedDir>$(GameDir)\Sixtar Gate STARTRAIL_Data\Managed</ManagedDir>
+    <MelonDir>$(GameDir)\MelonLoader\net472</MelonDir>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -24,7 +35,6 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
@@ -41,38 +51,33 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
     <Reference Include="MelonLoader">
-      <HintPath>H:\Sixtar Gate STARTRAIL server\MelonLoader\net472\MelonLoader.dll</HintPath>
+      <HintPath>$(MelonDir)\MelonLoader.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="0Harmony">
-      <HintPath>H:\Sixtar Gate STARTRAIL server\MelonLoader\net472\0Harmony.dll</HintPath>
+      <HintPath>$(MelonDir)\0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>H:\Sixtar Gate STARTRAIL server\Sixtar Gate STARTRAIL_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(ManagedDir)\Assembly-CSharp.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>H:\Sixtar Gate STARTRAIL server\Sixtar Gate STARTRAIL_Data\Managed\UnityEngine.dll</HintPath>
+      <HintPath>$(ManagedDir)\UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>H:\Sixtar Gate STARTRAIL server\Sixtar Gate STARTRAIL_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.AnimationModule">
-      <HintPath>H:\Sixtar Gate STARTRAIL server\Sixtar Gate STARTRAIL_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
+      <HintPath>$(ManagedDir)\UnityEngine.AnimationModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="SixtarBypassMod.cs" />
-    <Compile Include="Helpers\ReflectionUtils.cs" />
-    <Compile Include="Helpers\PatchRegistry.cs" />
-    <Compile Include="Patches\NetworkPatches.cs" />
-    <Compile Include="Patches\DataPatches.cs" />
-    <Compile Include="Patches\UIPatches.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
+    <!-- 새 .cs 파일은 자동으로 포함된다 (obj/bin 제외). -->
+    <Compile Include="**\*.cs" Exclude="obj\**;bin\**" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
