@@ -6,11 +6,14 @@
 
 1. [📖 시스템 아키텍처 및 설계 구조 (Architecture)](./architecture.md)
    - 모드 진입점 및 초기화 순서
-   - 4단계 게임 업데이트 내성 설계 (리플렉션, 격리 패치, MVID 추적, 폴백 전략)
+   - 업데이트 내성 설계 (리플렉션/캐시, 격리 패치, `[OptionalPatch]`, MVID 추적, 폴백 전략)
+   - 새 패치를 추가하는 법
 2. [⚠️ 패치 세부 사항 및 알려진 함정 (Patches & Gotchas)](./patches-and-gotchas.md)
-   - `NetworkPatches`, `DataPatches`, `UIPatches` 모듈별 세부 역할
+   - 25개 패치 목록과 게임 버전별 적용 여부(서버 사본 DLL 정적 확인 결과)
    - Private Static 캐시 미동기화 문제 및 ESC 키 먹통 트러블슈팅
-   - Unity InputSystem 예외 삼킴 대처 가이드
+   - 부분 결과 캐시, 정적 캐시 필드 이름 차이, Prefix 파라미터 바인딩, 디컴파일 폴더 신뢰 문제
+   - 실제 게임 DLL 시그니처를 확인하는 PowerShell 스니펫
+3. [📝 변경 이력 (Changelog)](../CHANGELOG.md)
 
 ---
 

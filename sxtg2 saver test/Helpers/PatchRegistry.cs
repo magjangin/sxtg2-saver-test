@@ -1,12 +1,31 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using HarmonyLib;
 using MelonLoader;
+using MelonLoader.Utils;
 
 namespace sxtg2_saver_test.Helpers
 {
+    /// <summary>
+    /// 이 패치는 일부 게임 버전에만 대상이 존재한다는 표시.
+    /// 대상이 없거나(Skip) 대상 타입이 없어 로드에 실패해도 "실패"가 아니라 "해당 없음"으로 보고한다.
+    /// 예) 신버전에만 있는 메서드를 막는 패치, 구/신버전 중 한쪽 타입만 쓰는 패치.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+    public sealed class OptionalPatchAttribute : Attribute
+    {
+        public string Reason { get; private set; }
+
+        public OptionalPatchAttribute(string reason)
+        {
+            Reason = reason;
+        }
+    }
+
     /// <summary>
     /// 패치를 하나씩 격리해서 적용하고, 결과를 표로 보고한다.
     ///
@@ -20,6 +39,9 @@ namespace sxtg2_saver_test.Helpers
         public enum Result
         {
             Applied,
+            /// <summary>이 게임 버전에는 대상이 없는 것이 정상인 선택 패치 ([OptionalPatch]).</summary>
+            NotApplicable,
+            /// <summary>대상을 못 찾아 건너뜀. 필수 패치라면 게임 업데이트를 의심해야 한다.</summary>
             Skipped,
             Failed
         }
@@ -32,6 +54,15 @@ namespace sxtg2_saver_test.Helpers
         }
 
         private static readonly List<Entry> Entries = new List<Entry>();
+
+        private const string FingerprintFileName = "SixtarBypass.fingerprint.txt";
+        private const string ReportFileName = "SixtarBypass.report.txt";
+
+        /// <summary>패치 대상 게임인지 확인한다. [MelonGame(null, null)] 이라 아무 게임에나 로드될 수 있다.</summary>
+        public static bool IsTargetGameLoaded()
+        {
+            return ReflectionUtils.FindType("ManagerWebRequest") != null;
+        }
 
         /// <summary>컨테이너 클래스 안의 [HarmonyPatch] 중첩 클래스를 전부 적용한다.</summary>
         public static void ApplyContainer(HarmonyLib.Harmony harmony, Type container)
@@ -46,7 +77,8 @@ namespace sxtg2_saver_test.Helpers
                 }
                 catch (Exception ex)
                 {
-                    Add(NameOf(nested), Result.Failed, "어트리뷰트 해석 실패: " + Unwrap(ex).Message);
+                    Add(NameOf(nested), IsOptional(nested) ? Result.NotApplicable : Result.Failed,
+                        "어트리뷰트 해석 실패: " + Unwrap(ex).Message);
                     continue;
                 }
 
@@ -60,6 +92,9 @@ namespace sxtg2_saver_test.Helpers
         public static void Apply(HarmonyLib.Harmony harmony, Type patchClass)
         {
             string name = NameOf(patchClass);
+            string optionalReason;
+            bool optional = TryGetOptionalReason(patchClass, out optionalReason);
+
             try
             {
                 // Prepare() 가 false 를 반환하면 Patch() 는 null 을 돌려준다.
@@ -67,7 +102,14 @@ namespace sxtg2_saver_test.Helpers
 
                 if (patched == null || patched.Count == 0)
                 {
-                    Add(name, Result.Skipped, "대상 메서드를 찾지 못함");
+                    if (optional)
+                    {
+                        Add(name, Result.NotApplicable, "이 게임 버전에는 대상 없음 (" + optionalReason + ")");
+                    }
+                    else
+                    {
+                        Add(name, Result.Skipped, "대상 메서드를 찾지 못함");
+                    }
                 }
                 else
                 {
@@ -77,13 +119,24 @@ namespace sxtg2_saver_test.Helpers
             catch (Exception ex)
             {
                 Exception root = Unwrap(ex);
-                Add(name, Result.Failed, root.GetType().Name + ": " + root.Message);
+                string detail = root.GetType().Name + ": " + root.Message;
+
+                if (optional)
+                {
+                    // 사라진 타입을 시그니처에 쓰는 패치는 Prepare 를 JIT 하다가 여기로 온다.
+                    Add(name, Result.NotApplicable, optionalReason + " [" + root.GetType().Name + "]");
+                }
+                else
+                {
+                    Add(name, Result.Failed, detail);
+                }
             }
         }
 
         public static void PrintReport()
         {
             int applied = Entries.Count(e => e.Result == Result.Applied);
+            int na = Entries.Count(e => e.Result == Result.NotApplicable);
             int skipped = Entries.Count(e => e.Result == Result.Skipped);
             int failed = Entries.Count(e => e.Result == Result.Failed);
 
@@ -104,17 +157,23 @@ namespace sxtg2_saver_test.Helpers
                     MelonLogger.Msg(line);
                 }
             }
-            MelonLogger.Msg($"  적용 {applied} / 건너뜀 {skipped} / 실패 {failed}");
+            MelonLogger.Msg($"  적용 {applied} / 해당 없음 {na} / 건너뜀 {skipped} / 실패 {failed}");
 
             if (failed > 0 || skipped > 0)
             {
-                MelonLogger.Warning("  일부 패치가 적용되지 않았습니다. 게임이 업데이트되어 대상 메서드가");
-                MelonLogger.Warning("  바뀌었을 수 있습니다. 위 항목의 대상 이름을 확인하세요.");
+                MelonLogger.Warning("  필수 패치 일부가 적용되지 않았습니다. 게임이 업데이트되어 대상 메서드가");
+                MelonLogger.Warning("  바뀌었을 수 있습니다. 위 SKIP/FAIL 항목의 대상 이름을 확인하세요.");
             }
             MelonLogger.Msg("----------------------------------------------");
+
+            WriteReportFile(applied, na, skipped, failed);
         }
 
-        /// <summary>게임 어셈블리 지문. 게임이 갱신되면 MVID 가 바뀐다.</summary>
+        /// <summary>
+        /// 게임 어셈블리 지문. 게임이 갱신되면 MVID 가 바뀐다.
+        /// 이전 실행의 MVID 를 UserData 에 기록해 두었다가, 달라졌으면 경고한다
+        /// (게임이 업데이트되었거나 다른 사본으로 실행했다는 뜻 → 패치 리포트를 꼼꼼히 볼 것).
+        /// </summary>
         public static void LogGameAssemblyFingerprint()
         {
             Assembly game = AppDomain.CurrentDomain.GetAssemblies()
@@ -126,8 +185,57 @@ namespace sxtg2_saver_test.Helpers
                 return;
             }
 
+            string mvid = game.ManifestModule.ModuleVersionId.ToString();
             MelonLogger.Msg($"[Env] Assembly-CSharp version : {game.GetName().Version}");
-            MelonLogger.Msg($"[Env] Assembly-CSharp MVID    : {game.ManifestModule.ModuleVersionId}");
+            MelonLogger.Msg($"[Env] Assembly-CSharp MVID    : {mvid}");
+
+            try
+            {
+                string path = Path.Combine(MelonEnvironment.UserDataDirectory, FingerprintFileName);
+                string previous = File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+
+                if (previous == null)
+                {
+                    MelonLogger.Msg("[Env] 첫 실행으로 보고 MVID 를 기록합니다.");
+                }
+                else if (!string.Equals(previous, mvid, StringComparison.OrdinalIgnoreCase))
+                {
+                    MelonLogger.Warning($"[Env] 게임 어셈블리가 이전 실행과 다릅니다 (이전 MVID {previous}).");
+                    MelonLogger.Warning("[Env] 게임이 업데이트되었을 수 있습니다. 아래 Patch Report 의 SKIP/FAIL 을 확인하세요.");
+                }
+
+                if (previous != mvid)
+                {
+                    File.WriteAllText(path, mvid);
+                }
+            }
+            catch (Exception ex)
+            {
+                // 기록 실패는 모드 동작과 무관하다.
+                MelonLogger.Warning("[Env] MVID 기록 건너뜀: " + ex.GetType().Name);
+            }
+        }
+
+        /// <summary>리포트를 UserData 에 파일로도 남긴다. 버그 제보할 때 이 파일만 첨부하면 된다.</summary>
+        private static void WriteReportFile(int applied, int na, int skipped, int failed)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("Sixtar Bypass Patch Report  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                sb.AppendLine("version: " + ModInfo.Version);
+                foreach (Entry e in Entries)
+                {
+                    sb.AppendLine($"[{Mark(e.Result)}] {e.Name}  {e.Detail}");
+                }
+                sb.AppendLine($"applied {applied} / n/a {na} / skipped {skipped} / failed {failed}");
+
+                File.WriteAllText(Path.Combine(MelonEnvironment.UserDataDirectory, ReportFileName), sb.ToString());
+            }
+            catch
+            {
+                // 파일을 못 써도 콘솔 리포트가 있으므로 무시한다.
+            }
         }
 
         private static string Mark(Result r)
@@ -135,8 +243,31 @@ namespace sxtg2_saver_test.Helpers
             switch (r)
             {
                 case Result.Applied: return "OK  ";
+                case Result.NotApplicable: return "N/A ";
                 case Result.Skipped: return "SKIP";
                 default: return "FAIL";
+            }
+        }
+
+        private static bool IsOptional(Type t)
+        {
+            string ignored;
+            return TryGetOptionalReason(t, out ignored);
+        }
+
+        private static bool TryGetOptionalReason(Type t, out string reason)
+        {
+            reason = null;
+            try
+            {
+                var attr = (OptionalPatchAttribute)Attribute.GetCustomAttribute(t, typeof(OptionalPatchAttribute), false);
+                if (attr == null) return false;
+                reason = attr.Reason;
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
